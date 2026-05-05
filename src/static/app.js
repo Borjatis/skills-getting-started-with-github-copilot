@@ -7,29 +7,99 @@ document.addEventListener("DOMContentLoaded", () => {
   // Function to fetch activities from API
   async function fetchActivities() {
     try {
+      if (window.location.protocol === "file:") {
+        activitiesList.innerHTML = "<p>Please open this page through the app server (for example, http://localhost:8000/) so activities can load.</p>";
+        return;
+      }
+
+      activitiesList.innerHTML = "<p>Loading activities...</p>";
       const response = await fetch("/activities");
+      if (!response.ok) {
+        throw new Error(`Failed to load activities: ${response.status}`);
+      }
       const activities = await response.json();
 
-      // Clear loading message
       activitiesList.innerHTML = "";
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
 
-      // Populate activities list
-      Object.entries(activities).forEach(([name, details]) => {
+      const activityEntries = Object.entries(activities || {});
+      if (activityEntries.length === 0) {
+        activitiesList.innerHTML = "<p>No activities available at this time.</p>";
+        return;
+      }
+
+      activityEntries.forEach(([name, details]) => {
         const activityCard = document.createElement("div");
         activityCard.className = "activity-card";
 
-        const spotsLeft = details.max_participants - details.participants.length;
+        const title = document.createElement("h4");
+        title.textContent = name;
 
-        activityCard.innerHTML = `
-          <h4>${name}</h4>
-          <p>${details.description}</p>
-          <p><strong>Schedule:</strong> ${details.schedule}</p>
-          <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
-        `;
+        const description = document.createElement("p");
+        description.textContent = details.description;
+
+        const schedule = document.createElement("p");
+        schedule.innerHTML = `<strong>Schedule:</strong> ${details.schedule}`;
+
+        const participants = Array.isArray(details.participants) ? details.participants : [];
+        const spotsLeft = details.max_participants - participants.length;
+        const availability = document.createElement("p");
+        availability.innerHTML = `<strong>Availability:</strong> ${spotsLeft} spots left`;
+
+        const participantsSection = document.createElement("div");
+        participantsSection.className = "participants-section";
+
+        const participantsTitle = document.createElement("p");
+        participantsTitle.className = "participants-title";
+        participantsTitle.textContent = "Participants";
+        participantsSection.appendChild(participantsTitle);
+
+        if (participants.length > 0) {
+          const list = document.createElement("ul");
+          participants.forEach((participant) => {
+            const item = document.createElement("li");
+            const participantSpan = document.createElement("span");
+            participantSpan.textContent = participant;
+            const removeButton = document.createElement("button");
+            removeButton.textContent = "×";
+            removeButton.className = "remove-participant";
+            removeButton.addEventListener("click", async () => {
+              try {
+                const response = await fetch(
+                  `/activities/${encodeURIComponent(name)}/signup?email=${encodeURIComponent(participant)}`,
+                  { method: "DELETE" }
+                );
+                if (response.ok) {
+                  fetchActivities(); // Refresh the list
+                } else {
+                  const result = await response.json();
+                  alert(result.detail || "Failed to remove participant");
+                }
+              } catch (error) {
+                alert("Failed to remove participant");
+                console.error("Error removing participant:", error);
+              }
+            });
+            item.appendChild(participantSpan);
+            item.appendChild(removeButton);
+            list.appendChild(item);
+          });
+          participantsSection.appendChild(list);
+        } else {
+          participantsSection.classList.add("participants-empty");
+          const noParticipants = document.createElement("p");
+          noParticipants.innerHTML = `<strong>Participants:</strong> None yet.`;
+          participantsSection.appendChild(noParticipants);
+        }
+
+        activityCard.appendChild(title);
+        activityCard.appendChild(description);
+        activityCard.appendChild(schedule);
+        activityCard.appendChild(availability);
+        activityCard.appendChild(participantsSection);
 
         activitiesList.appendChild(activityCard);
 
-        // Add option to select dropdown
         const option = document.createElement("option");
         option.value = name;
         option.textContent = name;
